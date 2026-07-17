@@ -57,7 +57,7 @@ The bundled model-price snapshot is based on [official OpenAI API pricing](https
 
 `--sync` uploads only:
 
-- a random anonymous device ID and public nickname
+- a random anonymous device ID, device proof, and public nickname (the server stores only a one-way hash of the proof)
 - total and Verified token counts
 - the estimated USD range
 - the current week

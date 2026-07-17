@@ -40,7 +40,7 @@ export async function syncLeaderboard(recap, options = {}) {
       usdHigh: recap.value.usd.high,
     }),
   }, options.fetcher);
-  return { board, identity, recap, uploaded: ["anonymous ID", "nickname", "token totals", "estimated USD range", "week"] };
+  return { board, identity, recap, uploaded: ["anonymous ID and device proof", "nickname", "token totals", "estimated USD range", "week"] };
 }
 
 export async function leaveLeaderboard(options = {}) {
@@ -81,7 +81,7 @@ export function renderLeaderboard(result, options = {}) {
     for (const entry of leaders) lines.push(`#${entry.rank}  ${entry.displayName} · ${formatTokens(entry.tokenCount)} tokens`);
   }
   lines.push("", "API-equivalent estimates for fun — not actual bills.");
-  if (result.uploaded) lines.push("Uploaded only: anonymous ID, nickname, token totals, estimated USD range, and week.");
+  if (result.uploaded) lines.push("Uploaded only: anonymous ID and device proof, nickname, token totals, estimated USD range, and week.");
   return lines.join("\n");
 }
 
