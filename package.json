@@ -1,0 +1,35 @@
+{
+  "name": "afterai",
+  "version": "0.1.0",
+  "description": "Know what your AI actually did.",
+  "type": "module",
+  "bin": {
+    "afterai": "./bin/afterai.js"
+  },
+  "scripts": {
+    "demo": "node ./bin/afterai.js --demo",
+    "test": "node --test",
+    "check": "node --check ./bin/afterai.js && node --check ./src/index.js && node --check ./src/scanner.js && node --check ./src/analyzer.js && node --check ./src/terminal.js && node --check ./src/html.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "keywords": [
+    "ai",
+    "codex",
+    "claude-code",
+    "agent",
+    "observability",
+    "local-first"
+  ],
+  "license": "MIT",
+  "files": [
+    "bin",
+    "src",
+    "examples",
+    "assets",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ]
+}

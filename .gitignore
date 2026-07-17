@@ -1,0 +1,4 @@
+node_modules/
+afterai-report.html
+*.log
+.DS_Store
