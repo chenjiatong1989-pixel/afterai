@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { analyzeSession, analyzeSessions } from "../src/analyzer.js";
 
-test("marks a session verified only when deterministic verification passes", () => {
+test("marks a generic session verified only when deterministic verification passes", () => {
   const session = analyzeSession({
     id: "verified",
     source: "custom",
@@ -14,30 +14,12 @@ test("marks a session verified only when deterministic verification passes", () 
       { timestamp: "2026-07-17T10:03:00Z", message: "Completed the fix", usage: { input_tokens: 100, output_tokens: 20 } },
     ],
   });
-
   assert.equal(session.status, "verified");
   assert.equal(session.usage.totalTokens, 120);
   assert.deepEqual(session.models, ["test-model"]);
 });
 
-test("does not trust a completion claim when the last test failed", () => {
-  const session = analyzeSession({
-    id: "partial",
-    source: "custom",
-    file: "/tmp/2026-07-17.jsonl",
-    events: [
-      { timestamp: "2026-07-17T10:00:00Z", task: "Fix checkout" },
-      { timestamp: "2026-07-17T10:01:00Z", file_path: "src/checkout.js" },
-      { timestamp: "2026-07-17T10:02:00Z", command: "npm test", exit_code: 1, error: "Test failed" },
-      { timestamp: "2026-07-17T10:03:00Z", message: "Finished the checkout fix" },
-    ],
-  });
-
-  assert.equal(session.status, "partial");
-  assert.match(session.evidence[0].text, /failed/);
-});
-
-test("uses Unknown instead of inventing missing usage", () => {
+test("uses Unknown instead of inventing missing generic usage", () => {
   const recap = analyzeSessions([{
     id: "unknown",
     source: "custom",
@@ -50,7 +32,108 @@ test("uses Unknown instead of inventing missing usage", () => {
   assert.equal(recap.usage.estimatedCostUsd, null);
 });
 
-test("detects repeated failed work", () => {
+test("parses current Codex events without treating context paths as changed files", () => {
+  const session = analyzeSession({
+    id: "codex-real-shape",
+    source: "codex",
+    file: "/tmp/2026-07-17/session.jsonl",
+    events: [
+      { timestamp: "2026-07-17T10:00:00Z", type: "session_meta", payload: { model: "gpt-5.6-sol", cwd: "C:/work/project" } },
+      { timestamp: "2026-07-17T10:00:01Z", type: "turn_context", payload: { workspace_roots: Array.from({ length: 12 }, (_, index) => `C:/work/path-${index}`) } },
+      { timestamp: "2026-07-17T10:00:02Z", type: "event_msg", payload: { type: "user_message", message: "Fix checkout validation" } },
+      { timestamp: "2026-07-17T10:00:03Z", type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { input_tokens: 100, cached_input_tokens: 40, output_tokens: 20, total_tokens: 120 } } } },
+      { timestamp: "2026-07-17T10:01:00Z", type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: "call-1", arguments: JSON.stringify({ cmd: "npm test" }) } },
+      { timestamp: "2026-07-17T10:01:02Z", type: "response_item", payload: { type: "function_call_output", call_id: "call-1", output: JSON.stringify({ exit_code: 0, output: "12 tests passed" }) } },
+      { timestamp: "2026-07-17T10:01:03Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "Implemented and verified the checkout fix." } },
+    ],
+  });
+
+  assert.equal(session.title, "Fix checkout validation");
+  assert.equal(session.status, "verified");
+  assert.deepEqual(session.models, ["gpt-5.6-sol"]);
+  assert.equal(session.usage.totalTokens, 120);
+  assert.equal(session.usage.cacheTokens, 40);
+  assert.equal(session.evidence.some((item) => item.type === "files"), false);
+  assert.equal(session.retryCount, 0);
+});
+
+test("uses only the latest cumulative Codex token snapshot", () => {
+  const session = analyzeSession({
+    id: "tokens",
+    source: "codex",
+    file: "/tmp/2026-07-17/session.jsonl",
+    events: [
+      { timestamp: "2026-07-17T10:00:00Z", type: "event_msg", payload: { type: "user_message", message: "Inspect repository" } },
+      { timestamp: "2026-07-17T10:00:01Z", type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { input_tokens: 100, output_tokens: 20, total_tokens: 120 } } } },
+      { timestamp: "2026-07-17T10:00:02Z", type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { input_tokens: 160, output_tokens: 40, total_tokens: 200 } } } },
+    ],
+  });
+  assert.equal(session.usage.totalTokens, 200);
+});
+
+test("keeps an ordinary Codex conversation Unknown and avoids a cheerful zero-evidence headline", () => {
+  const recap = analyzeSessions([{
+    id: "chat",
+    source: "codex",
+    file: "/tmp/2026-07-17/session.jsonl",
+    events: [
+      { timestamp: "2026-07-17T10:00:00Z", type: "event_msg", payload: { type: "user_message", message: "What model are you?" } },
+      { timestamp: "2026-07-17T10:00:01Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "I am an AI model." } },
+    ],
+  }], { range: "today", now: new Date("2026-07-17T12:00:00Z") });
+
+  assert.equal(recap.sessions[0].status, "unknown");
+  assert.equal(recap.headline, "No verified completion found in 1 session.");
+  assert.doesNotMatch(recap.headline, /Good/);
+});
+
+test("counts files only from explicit patch operations", () => {
+  const session = analyzeSession({
+    id: "patch",
+    source: "codex",
+    file: "/tmp/2026-07-17/session.jsonl",
+    events: [
+      { timestamp: "2026-07-17T10:00:00Z", type: "event_msg", payload: { type: "user_message", message: "Update the parser" } },
+      { timestamp: "2026-07-17T10:00:01Z", type: "response_item", payload: { type: "function_call", name: "apply_patch", call_id: "patch-1", arguments: "*** Begin Patch\n*** Update File: src/parser.js\n*** Add File: test/parser.test.js\n*** End Patch" } },
+      { timestamp: "2026-07-17T10:00:02Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "Implemented the parser update." } },
+    ],
+  });
+  const fileEvidence = session.evidence.find((item) => item.type === "files");
+  assert.equal(session.status, "unverified");
+  assert.deepEqual(fileEvidence.files, ["src/parser.js", "test/parser.test.js"]);
+});
+
+test("recognizes a Chinese completion claim but does not invent verification", () => {
+  const session = analyzeSession({
+    id: "zh-claim",
+    source: "codex",
+    file: "/tmp/2026-07-17/session.jsonl",
+    events: [
+      { timestamp: "2026-07-17T10:00:00Z", type: "event_msg", payload: { type: "user_message", message: "修复日志解析" } },
+      { timestamp: "2026-07-17T10:00:01Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "已经完成日志解析修复。" } },
+    ],
+  });
+  assert.equal(session.status, "unverified");
+  assert.equal(session.claim, "Agent reported completion");
+});
+
+test("does not trust a generic completion claim when the last test failed", () => {
+  const session = analyzeSession({
+    id: "partial",
+    source: "custom",
+    file: "/tmp/2026-07-17.jsonl",
+    events: [
+      { timestamp: "2026-07-17T10:00:00Z", task: "Fix checkout" },
+      { timestamp: "2026-07-17T10:01:00Z", file_path: "src/checkout.js" },
+      { timestamp: "2026-07-17T10:02:00Z", command: "npm test", exit_code: 1, error: "Test failed" },
+      { timestamp: "2026-07-17T10:03:00Z", message: "Finished the checkout fix" },
+    ],
+  });
+  assert.equal(session.status, "partial");
+  assert.match(session.evidence[0].text, /failed/);
+});
+
+test("detects repeated failed generic work", () => {
   const session = analyzeSession({
     id: "retry",
     source: "custom",
@@ -62,7 +145,6 @@ test("detects repeated failed work", () => {
       { command: "npm run test:integration", exit_code: 1, stderr: "Error connection refused 5432" },
     ],
   });
-
   assert.equal(session.retryCount, 2);
   assert.match(session.repeatedFailure, /error connection refused/);
 });
