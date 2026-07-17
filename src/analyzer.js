@@ -93,7 +93,7 @@ function analyzeCodexSession(session) {
     .filter((event) => event?.type === "event_msg" && event.payload?.type === "task_complete")
     .map((event) => event.payload?.last_agent_message)
     .filter((value) => typeof value === "string");
-  const claimText = finalMessages.join("\n");
+  const claimText = finalMessages.at(-1) ?? "";
   const changedFiles = findCodexChangedFiles(calls);
   const verification = findCodexVerification(commandRuns);
   const claim = hasCompletionClaim(claimText);
@@ -309,9 +309,9 @@ function stringValue(value) {
 }
 
 function determineStatus({ claim, incomplete = false, progress = false, failure, verification, changedFiles }) {
+  if (incomplete && progress) return "partial";
   if (verification.passed) return "verified";
   if (verification.failed && (changedFiles.length > 0 || claim)) return "partial";
-  if (incomplete && progress) return "partial";
   if (failure && !claim) return "failed";
   if (claim || changedFiles.length > 0) return "unverified";
   return "unknown";
