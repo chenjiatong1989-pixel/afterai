@@ -31,7 +31,12 @@ export function renderTerminal(recap) {
   lines.push(
     "",
     "TOTAL",
-    `${recap.counts.sessions} sessions · ${recap.counts.verified} verified · ${recap.counts.failed + recap.counts.partial} need review`,
+    `${recap.counts.sessions} tasks shown · ${recap.counts.verified} verified · ${recap.counts.failed + recap.counts.partial} need review`,
+  );
+  if (recap.counts.hidden > 0) {
+    lines.push(`${recap.counts.hidden} inconclusive chat session${recap.counts.hidden === 1 ? "" : "s"} hidden · included in token total`);
+  }
+  lines.push(
     recap.usage.totalTokens > 0
       ? `${formatNumber(recap.usage.totalTokens)} tokens · cost unknown until an exact pricing source is configured`
       : "Token usage unknown — the source logs did not expose it.",
