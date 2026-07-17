@@ -4,6 +4,8 @@ const TEST_WORDS = /\b(test|tests|pytest|jest|vitest|mocha|build|lint|typecheck|
 const TEST_WORDS_ZH = /测试|构建|代码检查|类型检查/;
 const SUCCESS_WORDS_ZH = /(?:已经|已)(?:完成|修复|实现|解决)|(?:测试|构建|检查)(?:已经|已)?通过|(?:修复|实现|更新)完成/;
 const FAILURE_WORDS_ZH = /错误|失败|异常|超时|权限被拒绝|速率限制/;
+const INCOMPLETE_WORDS = /\b(?:not finished|not complete|remaining work|one more step|needs? another step)\b/i;
+const INCOMPLETE_WORDS_ZH = /还差(?:一|1)步|还没(?:有)?完全|尚未完成|未完成|没有完成|需要你再|请再运行|仍需(?:要)?/;
 
 export function analyzeSessions(sessions, options = {}) {
   const window = dateWindow(options.range ?? "today", options.now ?? new Date());
@@ -95,15 +97,19 @@ function analyzeCodexSession(session) {
   const changedFiles = findCodexChangedFiles(calls);
   const verification = findCodexVerification(commandRuns);
   const claim = hasCompletionClaim(claimText);
+  const incomplete = hasIncompleteClaim(claimText);
   const explicitAbort = session.events.some((event) =>
     event?.type === "event_msg" && event.payload?.type === "turn_aborted" &&
     !/user|cancel/i.test(String(event.payload?.reason ?? ""))
   );
-  const failure = verification.failed || explicitAbort || commandRuns.some((run) =>
+  const failedRuns = commandRuns.filter((run) =>
     (Number.isInteger(run.exitCode) && run.exitCode !== 0) || hasFailureText(stringValue(run.output))
   );
+  const successfulRuns = commandRuns.filter((run) => run.exitCode === 0);
+  const failure = verification.failed || explicitAbort || (!claim && !incomplete && failedRuns.length > 0 && successfulRuns.length === 0);
   const retryInfo = findCodexRetries(commandRuns);
-  const status = determineStatus({ claim, failure, verification, changedFiles });
+  const progress = changedFiles.length > 0 || successfulRuns.length > 0 || calls.length > 0;
+  const status = determineStatus({ claim, incomplete, progress, failure, verification, changedFiles });
 
   return {
     id: session.id,
@@ -112,7 +118,7 @@ function analyzeCodexSession(session) {
     title: findCodexTitle(session.events),
     status,
     claim: claim ? "Agent reported completion" : "No clear completion claim",
-    evidence: buildEvidence({ verification, changedFiles, exitCodes }),
+    evidence: buildEvidence({ verification, changedFiles, exitCodes, incomplete }),
     models: findCodexModels(session.events),
     usage: extractCodexUsage(session.events),
     retryCount: retryInfo.count,
@@ -302,21 +308,26 @@ function stringValue(value) {
   try { return JSON.stringify(value); } catch { return String(value); }
 }
 
-function determineStatus({ claim, failure, verification, changedFiles }) {
+function determineStatus({ claim, incomplete = false, progress = false, failure, verification, changedFiles }) {
   if (verification.passed) return "verified";
   if (verification.failed && (changedFiles.length > 0 || claim)) return "partial";
+  if (incomplete && progress) return "partial";
   if (failure && !claim) return "failed";
   if (claim || changedFiles.length > 0) return "unverified";
   return "unknown";
 }
 
-function buildEvidence({ verification, changedFiles, exitCodes }) {
+function buildEvidence({ verification, changedFiles, exitCodes, incomplete = false }) {
   const evidence = [];
   if (verification.passed) evidence.push({ type: "verification", exact: true, text: `${verification.command} passed` });
   if (verification.failed) evidence.push({ type: "verification", exact: true, text: `${verification.command} failed` });
   if (changedFiles.length > 0) evidence.push({ type: "files", exact: true, text: `${changedFiles.length} changed file${changedFiles.length === 1 ? "" : "s"}`, files: changedFiles });
   const nonZero = exitCodes.filter((code) => code !== 0);
-  if (nonZero.length > 0) evidence.push({ type: "exit-code", exact: true, text: `${nonZero.length} non-zero command exit${nonZero.length === 1 ? "" : "s"}` });
+  if (nonZero.length > 0) {
+    const prefix = verification.passed ? "earlier " : "";
+    evidence.push({ type: "exit-code", exact: true, text: `${nonZero.length} ${prefix}non-zero command exit${nonZero.length === 1 ? "" : "s"}` });
+  }
+  if (incomplete) evidence.push({ type: "agent-report", exact: false, text: "Agent reported that work remains" });
   return evidence;
 }
 
@@ -346,8 +357,14 @@ function hasFailureText(text) {
   return FAILURE_WORDS.test(value) || FAILURE_WORDS_ZH.test(value);
 }
 
+function hasIncompleteClaim(text) {
+  const value = String(text ?? "");
+  return INCOMPLETE_WORDS.test(value) || INCOMPLETE_WORDS_ZH.test(value);
+}
+
 function isVerificationCommand(command) {
   const value = String(command ?? "");
+  if (/\bTest-Path\b/i.test(value)) return false;
   return TEST_WORDS.test(value) || TEST_WORDS_ZH.test(value);
 }
 
