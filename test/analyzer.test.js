@@ -117,6 +117,43 @@ test("recognizes a Chinese completion claim but does not invent verification", (
   assert.equal(session.claim, "Agent reported completion");
 });
 
+test("treats Test-Path plus an explicit remaining step as Partial, not Verified", () => {
+  const events = [
+    { timestamp: "2026-07-17T10:00:00Z", type: "event_msg", payload: { type: "user_message", message: "wifi densepose" } },
+  ];
+  for (let index = 0; index < 3; index += 1) {
+    events.push(
+      { timestamp: `2026-07-17T10:00:0${index + 1}Z`, type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: `failed-${index}`, arguments: JSON.stringify({ cmd: "python install.py" }) } },
+      { timestamp: `2026-07-17T10:00:1${index + 1}Z`, type: "response_item", payload: { type: "function_call_output", call_id: `failed-${index}`, output: JSON.stringify({ exit_code: 1, output: "Error" }) } },
+    );
+  }
+  events.push(
+    { timestamp: "2026-07-17T10:01:00Z", type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: "probe", arguments: JSON.stringify({ cmd: "Test-Path 'C:/InvokeAI/python.exe'" }) } },
+    { timestamp: "2026-07-17T10:01:01Z", type: "response_item", payload: { type: "function_call_output", call_id: "probe", output: JSON.stringify({ exit_code: 0, output: "True" }) } },
+    { timestamp: "2026-07-17T10:01:02Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "现在还差一步，桌面入口还没完全收干净。请再运行修正脚本。" } },
+  );
+
+  const session = analyzeSession({ id: "densepose", source: "codex", file: "/tmp/2026-07-17/session.jsonl", events });
+  assert.equal(session.status, "partial");
+  assert.equal(session.evidence.some((item) => item.type === "verification"), false);
+  assert.equal(session.evidence.some((item) => item.type === "agent-report"), true);
+});
+
+test("keeps a Codex task Failed when every observed command failed", () => {
+  const session = analyzeSession({
+    id: "download",
+    source: "codex",
+    file: "/tmp/2026-07-17/session.jsonl",
+    events: [
+      { timestamp: "2026-07-17T10:00:00Z", type: "event_msg", payload: { type: "user_message", message: "下载agents.md" } },
+      { timestamp: "2026-07-17T10:00:01Z", type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: "download", arguments: JSON.stringify({ cmd: "curl example.invalid/agents.md" }) } },
+      { timestamp: "2026-07-17T10:00:02Z", type: "response_item", payload: { type: "function_call_output", call_id: "download", output: JSON.stringify({ exit_code: 1, output: "Error: download failed" }) } },
+      { timestamp: "2026-07-17T10:00:03Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "无法下载该文件。" } },
+    ],
+  });
+  assert.equal(session.status, "failed");
+});
+
 test("does not trust a generic completion claim when the last test failed", () => {
   const session = analyzeSession({
     id: "partial",
