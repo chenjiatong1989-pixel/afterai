@@ -139,6 +139,22 @@ test("treats Test-Path plus an explicit remaining step as Partial, not Verified"
   assert.equal(session.evidence.some((item) => item.type === "agent-report"), true);
 });
 
+test("lets the latest explicit incomplete report override an earlier passing test", () => {
+  const session = analyzeSession({
+    id: "latest-incomplete",
+    source: "codex",
+    file: "/tmp/2026-07-17/session.jsonl",
+    events: [
+      { timestamp: "2026-07-17T10:00:00Z", type: "event_msg", payload: { type: "user_message", message: "Migrate InvokeAI" } },
+      { timestamp: "2026-07-17T10:00:01Z", type: "response_item", payload: { type: "function_call", name: "exec_command", call_id: "test", arguments: JSON.stringify({ cmd: "npm test" }) } },
+      { timestamp: "2026-07-17T10:00:02Z", type: "response_item", payload: { type: "function_call_output", call_id: "test", output: JSON.stringify({ exit_code: 0, output: "All tests passed" }) } },
+      { timestamp: "2026-07-17T10:00:03Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "迁移已完成。" } },
+      { timestamp: "2026-07-17T10:01:00Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "现在还差一步，桌面入口还没完全收干净。" } },
+    ],
+  });
+  assert.equal(session.status, "partial");
+});
+
 test("keeps a Codex task Failed when every observed command failed", () => {
   const session = analyzeSession({
     id: "download",
