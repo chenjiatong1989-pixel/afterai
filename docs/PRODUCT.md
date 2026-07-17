@@ -10,6 +10,13 @@ It answers three questions:
 
 It is not a real-time dashboard, trace replay system, hosted analytics service, or autonomous model router.
 
+It has two deliberately small views:
+
+- `afterai`: what the agent accomplished and whether evidence supports it
+- `afterai privacy`: what local configuration exposes about endpoints, telemetry, MCP, and secret storage
+
+The privacy view does not claim to observe live traffic unless a future capture layer actually does so.
+
 ## Design rule
 
 Every visible field must change a decision. Details that do not help a user verify work, find a problem, or choose a next action stay hidden.

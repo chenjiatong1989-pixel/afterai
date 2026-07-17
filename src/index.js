@@ -4,6 +4,8 @@ import { scanSources } from "./scanner.js";
 import { analyzeSessions } from "./analyzer.js";
 import { renderTerminal } from "./terminal.js";
 import { writeHtmlReport } from "./html.js";
+import { createPrivacySnapshot } from "./privacy.js";
+import { renderPrivacyTerminal } from "./privacy-terminal.js";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -22,6 +24,16 @@ export async function run(argv) {
 
   if (options.help) {
     process.stdout.write(helpText());
+    return;
+  }
+
+  if (options.mode === "privacy") {
+    const snapshot = await createPrivacySnapshot({
+      ...options,
+      demoPath: path.resolve(dirname, "../examples/privacy"),
+    });
+    if (options.json) process.stdout.write(`${JSON.stringify(snapshot, null, 2)}\n`);
+    else process.stdout.write(`${renderPrivacyTerminal(snapshot)}\n`);
     return;
   }
 
@@ -45,11 +57,12 @@ export async function run(argv) {
 }
 
 export function parseArgs(argv) {
-  const options = { range: "today", paths: [] };
+  const options = { mode: "work", range: "today", paths: [] };
 
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (["today", "yesterday", "week"].includes(arg)) options.range = arg;
+    if (arg === "privacy") options.mode = "privacy";
+    else if (["today", "yesterday", "week"].includes(arg)) options.range = arg;
     else if (arg === "--demo") options.demo = true;
     else if (arg === "--json") options.json = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
@@ -75,5 +88,5 @@ export function parseArgs(argv) {
 }
 
 function helpText() {
-  return `AfterAI — know what your AI actually did.\n\nUsage:\n  afterai [today|yesterday|week]\n  afterai --demo\n  afterai --path ./sessions --html\n\nOptions:\n  --path <path>   Read a log directory or JSON/JSONL file\n  --html [file]   Save a private local HTML report\n  --json          Print machine-readable results\n  --demo          Use the included evidence-backed demo\n  -h, --help      Show this help\n`;
+  return `AfterAI — know what your AI actually did.\n\nUsage:\n  afterai [today|yesterday|week]\n  afterai privacy\n  afterai --demo\n  afterai privacy --demo\n  afterai --path ./sessions --html\n\nOptions:\n  --path <path>   Read a log or configuration path\n  --html [file]   Save a private local work report\n  --json          Print machine-readable results\n  --demo          Use the included evidence-backed demo\n  -h, --help      Show this help\n`;
 }

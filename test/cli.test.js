@@ -12,3 +12,9 @@ test("parses the intentionally small CLI", () => {
 test("rejects unknown flags", () => {
   assert.throws(() => parseArgs(["--dashboard"]), /Unknown option/);
 });
+
+test("selects the privacy module without changing the small CLI", () => {
+  const options = parseArgs(["privacy", "--demo"]);
+  assert.equal(options.mode, "privacy");
+  assert.equal(options.demo, true);
+});

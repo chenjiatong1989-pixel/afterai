@@ -86,7 +86,27 @@ afterai --path ./logs      # custom JSON/JSONL source
 afterai --html             # also save afterai-report.html
 afterai --json             # machine-readable output
 afterai --demo             # evidence-backed sample
+afterai privacy            # local AI privacy configuration snapshot
+afterai privacy --demo     # privacy module sample
 ```
+
+## Privacy snapshot
+
+Everyone monitors AI. AfterAI also asks: **who might be watching you and your AI?**
+
+```bash
+afterai privacy
+```
+
+The privacy module inspects supported local AI configuration and reports:
+
+- configured external endpoints
+- telemetry-like settings
+- MCP server names
+- secret-like values stored inline
+- environment-variable references without revealing their values
+
+It never prints secret values. It also labels live network traffic as `Unknown` because configuration alone cannot prove what was actually transmitted. That requires a separate real-time network capture layer.
 
 ## How it works
 

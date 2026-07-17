@@ -1,0 +1,12 @@
+{
+  "telemetry": true,
+  "mcpServers": {
+    "documentation": {
+      "url": "https://mcp.example.test/connect",
+      "apiKey": "replace-me"
+    },
+    "local-tools": {
+      "url": "http://127.0.0.1:3030"
+    }
+  }
+}
