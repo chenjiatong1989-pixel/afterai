@@ -30,7 +30,9 @@ export async function run(argv) {
       return;
     }
     if (!options.sync) {
-      process.stdout.write(`${renderLeaderboard(await getLeaderboard())}\n`);
+      const currency = options.currency ?? detectCurrency();
+      const rates = options.refreshRates ? await refreshRates() : await loadRates();
+      process.stdout.write(`${renderLeaderboard(await getLeaderboard(), { currency, rates })}\n`);
       return;
     }
     options.range = "week";

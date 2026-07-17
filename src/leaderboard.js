@@ -65,6 +65,15 @@ export function renderLeaderboard(result, options = {}) {
     );
     if (result.recap.value.localCurrency !== "USD") lines.push(`Local equivalent  ${formatMoneyRange(result.recap.value.local, result.recap.value.localCurrency)}`);
     lines.push("");
+  } else if (board.you) {
+    const usd = { low: board.you.usdLow, high: board.you.usdHigh };
+    lines.push(`🔥 ${formatTokens(board.you.tokenCount)} tokens this week`, `API equivalent  ${formatMoneyRange(usd, "USD", "en-US")}`);
+    const currency = options.currency ?? "USD";
+    const rate = currency === "USD" ? 1 : Number(options.rates?.rates?.[currency]);
+    if (currency !== "USD" && Number.isFinite(rate) && rate > 0) {
+      lines.push(`Local equivalent  ${formatMoneyRange({ low: usd.low * rate, high: usd.high * rate }, currency)}`);
+    }
+    lines.push("");
   }
   if (board.rank) {
     const standing = board.totalParticipants === 1
