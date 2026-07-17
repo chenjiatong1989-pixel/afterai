@@ -87,6 +87,7 @@ test("hides an ordinary Codex conversation while retaining its token usage", () 
   assert.equal(recap.counts.scanned, 1);
   assert.equal(recap.counts.hidden, 1);
   assert.equal(recap.usage.totalTokens, 100);
+  assert.deepEqual(recap.pricingModels, []);
   assert.equal(recap.headline, "No actionable AI work found for this period.");
   assert.doesNotMatch(recap.headline, /Good/);
 });

@@ -37,6 +37,7 @@ export function analyzeSessions(sessions, options = {}) {
       retries,
     },
     usage,
+    pricingModels: [...new Set(allSessions.flatMap((session) => session.models))],
     attention,
     sessions: analyzed,
     warnings: options.sourceWarnings ?? [],

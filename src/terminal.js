@@ -6,6 +6,8 @@ const STATUS = {
   unknown: "? Unknown",
 };
 
+import { formatMoneyRange } from "./value.js";
+
 export function renderTerminal(recap) {
   const lines = [
     "",
@@ -38,15 +40,30 @@ export function renderTerminal(recap) {
   }
   lines.push(
     recap.usage.totalTokens > 0
-      ? `${formatNumber(recap.usage.totalTokens)} tokens · cost unknown until an exact pricing source is configured`
+      ? `${formatNumber(recap.usage.totalTokens)} tokens`
       : "Token usage unknown — the source logs did not expose it.",
-    "",
-    "NEXT",
-    recap.attention.text,
   );
+
+  lines.push("", "TOKEN VALUE");
+  if (recap.value?.status === "estimated") {
+    lines.push(`API equivalent  ${formatMoneyRange(recap.value.usd, "USD", "en-US")}`);
+    if (recap.value.localCurrency !== "USD") {
+      lines.push(`Local equivalent  ${formatMoneyRange(recap.value.local, recap.value.localCurrency)}`);
+      if (recap.value.exchangeRate) lines.push(`Exchange rate  1 USD = ${formatRate(recap.value.exchangeRate)} ${recap.value.localCurrency} · ${recap.value.ratesAsOf}`);
+    }
+    lines.push(`Confidence  ${recap.value.confidence} · pricing ${recap.value.pricingAsOf}`, "Actual amount billed  Unknown");
+  } else {
+    lines.push(`Unknown — ${recap.value?.reasons?.[0] ?? "pricing evidence is incomplete."}`);
+  }
+
+  lines.push("", "NEXT", recap.attention.text);
 
   if (recap.warnings.length) lines.push("", `Note: ${recap.warnings.length} source warning${recap.warnings.length === 1 ? "" : "s"}. Use --json for details.`);
   return lines.join("\n");
+}
+
+function formatRate(value) {
+  return new Intl.NumberFormat("en", { maximumFractionDigits: 6 }).format(value);
 }
 
 function formatNumber(value) {
