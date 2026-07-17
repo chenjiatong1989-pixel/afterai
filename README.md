@@ -2,7 +2,7 @@
 
 > **Know what your AI actually did.**
 
-Your coding agent says it finished. AfterAI checks the evidence, counts the tokens exposed by local logs, and estimates their API-equivalent value without pretending that estimate is your bill.
+Your coding agent says it finished. AfterAI checks the evidence, counts the tokens exposed by local logs, estimates their API-equivalent value, and lets you opt into a simple weekly Burn Rank.
 
 **Local by default. No account. No API key. No uploaded logs.**
 
@@ -27,6 +27,10 @@ afterai --html             # also save afterai-report.html
 afterai --json             # machine-readable output
 afterai --currency AUD     # override the system-region currency
 afterai --refresh-rates    # explicitly refresh and cache exchange rates
+afterai rank               # refresh the public weekly leaderboard
+afterai rank --sync        # upload your anonymous summary, then refresh rank
+afterai rank --sync --name "Token BBQ"
+afterai rank --leave       # delete this device's leaderboard entry
 afterai --demo             # evidence-backed sample
 afterai privacy            # local AI privacy configuration snapshot
 ```
@@ -46,6 +50,19 @@ The report labels the result **API equivalent — Estimated**. It is not an acco
 Normal reports make no network request. `--refresh-rates` is the only exchange-rate network action; it fetches daily central-bank rates from [Frankfurter](https://frankfurter.dev/) and stores them in `~/.afterai/rates.json`.
 
 The bundled model-price snapshot is based on [official OpenAI API pricing](https://developers.openai.com/api/docs/pricing). Prices and exchange rates change, so the snapshot date is always displayed.
+
+## Burn Rank
+
+[Burn Rank](https://afterai-burn-rank.chenjiatong1989.chatgpt.site) deliberately has one main weekly leaderboard and one secondary Verified rank. Run `afterai rank` to refresh it. Run `afterai rank --sync` to explicitly upload the current week's summary and receive your rank.
+
+`--sync` uploads only:
+
+- a random anonymous device ID and public nickname
+- total and Verified token counts
+- the estimated USD range
+- the current week
+
+It does not upload chats, prompts, task titles, files, paths, logs, locations, or personal details. The anonymous identity secret stays in `~/.afterai/rank.json` so only that device can update or delete its entry. Rankings are for fun and are not audited billing records.
 
 ## Five honest outcomes
 

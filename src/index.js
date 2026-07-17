@@ -8,6 +8,7 @@ import { createPrivacySnapshot } from "./privacy.js";
 import { renderPrivacyTerminal } from "./privacy-terminal.js";
 import { calculateTokenValue } from "./value.js";
 import { detectCurrency, loadRates, normalizeCurrency, refreshRates } from "./currency.js";
+import { getLeaderboard, leaveLeaderboard, renderLeaderboard, syncLeaderboard } from "./leaderboard.js";
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -21,6 +22,26 @@ export async function createRecap(options = {}) {
 export async function run(argv) {
   const options = parseArgs(argv);
   if (options.help) { process.stdout.write(helpText()); return; }
+
+  if (options.mode === "rank") {
+    if (options.leave) {
+      const result = await leaveLeaderboard();
+      process.stdout.write(`${result.deleted ? "Leaderboard data deleted." : result.reason}\n`);
+      return;
+    }
+    if (!options.sync) {
+      process.stdout.write(`${renderLeaderboard(await getLeaderboard())}\n`);
+      return;
+    }
+    options.range = "week";
+    const currency = options.currency ?? detectCurrency();
+    const rates = options.refreshRates ? await refreshRates() : await loadRates();
+    const recap = await createRecap(options);
+    recap.value = calculateTokenValue({ usage: recap.usage, models: recap.pricingModels, currency, rates });
+    const result = await syncLeaderboard(recap, { name: options.name });
+    process.stdout.write(`${renderLeaderboard(result)}\n`);
+    return;
+  }
 
   if (options.mode === "privacy") {
     const snapshot = await createPrivacySnapshot({ ...options, demoPath: path.resolve(dirname, "../examples/privacy") });
@@ -49,15 +70,23 @@ export function parseArgs(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "privacy") options.mode = "privacy";
+    else if (arg === "rank") options.mode = "rank";
     else if (["today", "yesterday", "week"].includes(arg)) options.range = arg;
     else if (arg === "--demo") options.demo = true;
     else if (arg === "--json") options.json = true;
     else if (arg === "--refresh-rates") options.refreshRates = true;
+    else if (arg === "--sync") options.sync = true;
+    else if (arg === "--leave") options.leave = true;
     else if (arg === "--help" || arg === "-h") options.help = true;
     else if (arg === "--currency") {
       const value = argv[index + 1];
       if (!value) throw new Error("--currency needs a three-letter ISO code such as AUD or USD");
       options.currency = normalizeCurrency(value);
+      index += 1;
+    } else if (arg === "--name") {
+      const value = argv[index + 1];
+      if (!value) throw new Error("--name needs a leaderboard nickname");
+      options.name = value;
       index += 1;
     } else if (arg === "--path") {
       const value = argv[index + 1];
@@ -73,5 +102,5 @@ export function parseArgs(argv) {
 }
 
 function helpText() {
-  return `AfterAI — know what your AI actually did.\n\nUsage:\n  afterai [today|yesterday|week]\n  afterai privacy\n  afterai --path ./sessions --html\n\nOptions:\n  --path <path>       Read a log or configuration path\n  --html [file]       Save a private local work report\n  --currency <ISO>    Show API-equivalent value in AUD, USD, EUR, etc.\n  --refresh-rates     Explicitly download and cache current exchange rates\n  --json              Print machine-readable results\n  --demo              Use the included evidence-backed demo\n  -h, --help          Show this help\n`;
+  return `AfterAI — know what your AI actually did.\n\nUsage:\n  afterai [today|yesterday|week]\n  afterai rank\n  afterai rank --sync [--name "Burner name"]\n  afterai privacy\n  afterai --path ./sessions --html\n\nOptions:\n  --path <path>       Read a log or configuration path\n  --html [file]       Save a private local work report\n  --currency <ISO>    Show API-equivalent value in AUD, USD, EUR, etc.\n  --refresh-rates     Explicitly download and cache current exchange rates\n  --sync              Upload an anonymous weekly summary, then refresh rank\n  --name <nickname>   Set a public leaderboard nickname (1–24 characters)\n  --leave             Delete this device's leaderboard data\n  --json              Print machine-readable results\n  --demo              Use the included evidence-backed demo\n  -h, --help          Show this help\n`;
 }
