@@ -71,20 +71,47 @@ test("uses only the latest cumulative Codex token snapshot", () => {
   assert.equal(session.usage.totalTokens, 200);
 });
 
-test("keeps an ordinary Codex conversation Unknown and avoids a cheerful zero-evidence headline", () => {
+test("hides an ordinary Codex conversation while retaining its token usage", () => {
   const recap = analyzeSessions([{
     id: "chat",
     source: "codex",
     file: "/tmp/2026-07-17/session.jsonl",
     events: [
       { timestamp: "2026-07-17T10:00:00Z", type: "event_msg", payload: { type: "user_message", message: "What model are you?" } },
-      { timestamp: "2026-07-17T10:00:01Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "I am an AI model." } },
+      { timestamp: "2026-07-17T10:00:01Z", type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { input_tokens: 80, output_tokens: 20, total_tokens: 100 } } } },
+      { timestamp: "2026-07-17T10:00:02Z", type: "event_msg", payload: { type: "task_complete", last_agent_message: "I am an AI model." } },
     ],
   }], { range: "today", now: new Date("2026-07-17T12:00:00Z") });
 
-  assert.equal(recap.sessions[0].status, "unknown");
-  assert.equal(recap.headline, "No verified completion found in 1 session.");
+  assert.equal(recap.sessions.length, 0);
+  assert.equal(recap.counts.scanned, 1);
+  assert.equal(recap.counts.hidden, 1);
+  assert.equal(recap.usage.totalTokens, 100);
+  assert.equal(recap.headline, "No actionable AI work found for this period.");
   assert.doesNotMatch(recap.headline, /Good/);
+});
+
+test("reports the exact number of tasks needing review and hides inconclusive chat", () => {
+  const now = new Date("2026-07-17T12:00:00Z");
+  const recap = analyzeSessions([
+    {
+      id: "failed", source: "custom", file: "/tmp/2026-07-17-failed.jsonl",
+      events: [{ timestamp: "2026-07-17T10:00:00Z", task: "Download file", command: "curl file", exit_code: 1 }],
+    },
+    {
+      id: "partial", source: "custom", file: "/tmp/2026-07-17-partial.jsonl",
+      events: [{ timestamp: "2026-07-17T10:01:00Z", task: "Fix app", file_path: "src/app.js", command: "npm test", exit_code: 1, message: "Finished the change" }],
+    },
+    {
+      id: "chat", source: "codex", file: "/tmp/2026-07-17-chat.jsonl",
+      events: [{ timestamp: "2026-07-17T10:02:00Z", type: "event_msg", payload: { type: "user_message", message: "How are you?" } }],
+    },
+  ], { range: "today", now });
+
+  assert.equal(recap.headline, "2 tasks need review.");
+  assert.equal(recap.counts.sessions, 2);
+  assert.equal(recap.counts.hidden, 1);
+  assert.equal(recap.attention.sessionId, "failed");
 });
 
 test("counts files only from explicit patch operations", () => {
