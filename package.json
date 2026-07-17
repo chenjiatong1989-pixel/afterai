@@ -1,6 +1,6 @@
 {
   "name": "afterai",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "Know what your AI actually did.",
   "type": "module",
   "bin": {
