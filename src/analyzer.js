@@ -9,13 +9,15 @@ const INCOMPLETE_WORDS_ZH = /还差(?:一|1)步|还没(?:有)?完全|尚未完�
 
 export function analyzeSessions(sessions, options = {}) {
   const window = dateWindow(options.range ?? "today", options.now ?? new Date());
-  const analyzed = sessions
+  const allSessions = sessions
     .map(analyzeSession)
     .filter((session) => session.timestamp && (options.includeAll || inWindow(session.timestamp, window)))
     .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
+  const hiddenSessions = allSessions.filter(isInconclusiveChat);
+  const analyzed = allSessions.filter((session) => !isInconclusiveChat(session));
 
   const counts = countStatuses(analyzed);
-  const usage = sumUsage(analyzed);
+  const usage = sumUsage(allSessions);
   const retries = analyzed.reduce((sum, session) => sum + session.retryCount, 0);
   const attention = chooseAttention(analyzed);
 
@@ -25,6 +27,8 @@ export function analyzeSessions(sessions, options = {}) {
     headline: makeHeadline(analyzed, counts, attention),
     counts: {
       sessions: analyzed.length,
+      scanned: allSessions.length,
+      hidden: hiddenSessions.length,
       verified: counts.verified ?? 0,
       unverified: counts.unverified ?? 0,
       partial: counts.partial ?? 0,
@@ -490,12 +494,22 @@ function chooseAttention(sessions) {
 }
 
 function makeHeadline(sessions, counts, attention) {
-  if (sessions.length === 0) return "No AI work found for this period.";
-  if (attention.level === "high") return "Check one task — the evidence disagrees with the result.";
+  if (sessions.length === 0) return "No actionable AI work found for this period.";
+  const needReview = (counts.failed ?? 0) + (counts.partial ?? 0);
+  if (needReview > 0) return `${needReview} task${needReview === 1 ? "" : "s"} need review.`;
+  const unverified = counts.unverified ?? 0;
+  if (unverified > 0) return `${unverified} task${unverified === 1 ? " has" : "s have"} no verification evidence.`;
   const proven = counts.verified ?? 0;
   if (proven === 0) return `No verified completion found in ${sessions.length} session${sessions.length === 1 ? "" : "s"}.`;
   if (proven === sessions.length) return `All ${sessions.length} session${sessions.length === 1 ? "" : "s"} have verification evidence.`;
   return `${proven} of ${sessions.length} sessions have verification evidence.`;
+}
+
+function isInconclusiveChat(session) {
+  return ["codex", "claude"].includes(session.source) &&
+    session.status === "unknown" &&
+    session.evidence.length === 0 &&
+    session.retryCount === 0;
 }
 
 function countStatuses(sessions) {
