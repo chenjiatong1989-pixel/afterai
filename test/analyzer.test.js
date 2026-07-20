@@ -48,7 +48,7 @@ test("parses current Codex events without treating context paths as changed file
     ],
   });
 
-  assert.equal(session.title, "Fix checkout validation");
+  assert.equal(session.title, "Codex work session");
   assert.equal(session.status, "verified");
   assert.deepEqual(session.models, ["gpt-5.6-sol"]);
   assert.equal(session.usage.totalTokens, 120);

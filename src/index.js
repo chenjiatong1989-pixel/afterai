@@ -2,7 +2,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { scanSources } from "./scanner.js";
 import { analyzeSessions } from "./analyzer.js";
-import { renderTerminal } from "./terminal.js";
+import { createReceipt } from "./receipt.js";
+import { renderReceipt } from "./receipt-terminal.js";
 import { writeHtmlReport } from "./html.js";
 import { createPrivacySnapshot } from "./privacy.js";
 import { renderPrivacyTerminal } from "./privacy-terminal.js";
@@ -52,16 +53,17 @@ export async function run(argv) {
     return;
   }
 
-  if (options.demo) options.paths = [path.resolve(dirname, "../examples")];
+  if (options.demo) options.paths = [path.resolve(dirname, "../examples/codex-verified.jsonl")];
   const currency = options.currency ?? detectCurrency();
   const rates = options.refreshRates ? await refreshRates() : await loadRates();
   const recap = await createRecap(options);
-  recap.value = calculateTokenValue({ usage: recap.usage, models: recap.pricingModels, currency, rates });
+  const receipt = createReceipt(recap);
 
-  if (options.json) { process.stdout.write(`${JSON.stringify(recap, null, 2)}\n`); return; }
-  process.stdout.write(`${renderTerminal(recap)}\n`);
+  if (options.json) { process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`); return; }
+  process.stdout.write(`${renderReceipt(receipt)}\n`);
   if (options.refreshRates) process.stdout.write(`\nExchange rates refreshed: ${rates.asOf}\n`);
   if (options.html) {
+    recap.value = calculateTokenValue({ usage: recap.usage, models: recap.pricingModels, currency, rates });
     const output = await writeHtmlReport(recap, options.html);
     process.stdout.write(`\nSaved local report: ${output}\n`);
   }
@@ -104,5 +106,5 @@ export function parseArgs(argv) {
 }
 
 function helpText() {
-  return `AfterAI — know what your AI actually did.\n\nUsage:\n  afterai [today|yesterday|week]\n  afterai rank\n  afterai rank --sync [--name "Burner name"]\n  afterai privacy\n  afterai --path ./sessions --html\n\nOptions:\n  --path <path>       Read a log or configuration path\n  --html [file]       Save a private local work report\n  --currency <ISO>    Show API-equivalent value in AUD, USD, EUR, etc.\n  --refresh-rates     Explicitly download and cache current exchange rates\n  --sync              Upload an anonymous weekly summary, then refresh rank\n  --name <nickname>   Set a public leaderboard nickname (1–24 characters)\n  --leave             Delete this device's leaderboard data\n  --json              Print machine-readable results\n  --demo              Use the included evidence-backed demo\n  -h, --help          Show this help\n`;
+  return `AfterAI — evidence-backed work receipts for Codex CLI.\n\nUsage:\n  afterai today\n  afterai today --json\n  afterai --path ./sessions\n\nCore options:\n  --path <path>       Read a Codex JSON or JSONL source\n  --json              Print the machine-readable evidence receipt\n  --demo              Use the included evidence-backed demo\n  -h, --help          Show this help\n\nLegacy experiments remain available for compatibility: privacy, rank, --html, and token-value options.\n`;
 }

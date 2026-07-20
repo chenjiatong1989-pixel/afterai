@@ -1,16 +1,16 @@
 {
   "name": "afterai",
-  "version": "0.4.1",
-  "description": "Know what your AI actually did.",
+  "version": "0.5.0",
+  "description": "Evidence-backed work receipts for Codex CLI.",
   "type": "module",
   "bin": { "afterai": "./bin/afterai.js" },
   "scripts": {
     "demo": "node ./bin/afterai.js --demo",
     "test": "node --test",
-    "check": "node --check ./bin/afterai.js && node --check ./src/index.js && node --check ./src/scanner.js && node --check ./src/analyzer.js && node --check ./src/terminal.js && node --check ./src/html.js && node --check ./src/value.js && node --check ./src/currency.js && node --check ./src/leaderboard.js && node --check ./src/privacy.js && node --check ./src/privacy-terminal.js"
+    "check": "node --check ./bin/afterai.js && node --check ./src/index.js && node --check ./src/scanner.js && node --check ./src/analyzer.js && node --check ./src/receipt.js && node --check ./src/receipt-terminal.js && node --check ./src/terminal.js && node --check ./src/html.js && node --check ./src/value.js && node --check ./src/currency.js && node --check ./src/leaderboard.js && node --check ./src/privacy.js && node --check ./src/privacy-terminal.js"
   },
   "engines": { "node": ">=20" },
-  "keywords": ["ai", "codex", "claude-code", "agent", "observability", "local-first", "token-cost"],
+  "keywords": ["ai", "codex", "agent", "evidence", "verification", "local-first"],
   "license": "MIT",
   "files": ["bin", "src", "examples", "assets", "docs", "README.md", "LICENSE"]
 }

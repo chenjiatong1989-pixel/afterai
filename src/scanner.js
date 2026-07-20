@@ -4,7 +4,6 @@ import { readFile, readdir, stat } from "node:fs/promises";
 
 const DEFAULT_SOURCES = [
   { name: "codex", location: [".codex", "sessions"] },
-  { name: "claude", location: [".claude", "projects"] },
 ];
 
 const MAX_FILES = 5_000;
@@ -30,13 +29,15 @@ export async function scanSources(options = {}) {
           warnings.push(`Skipped oversized log: ${file}`);
           continue;
         }
-        const events = await readEvents(file);
+        const { events, malformedLines } = await readEvents(file);
+        if (malformedLines > 0) warnings.push(`Ignored ${malformedLines} malformed or truncated line${malformedLines === 1 ? "" : "s"} in ${file}`);
         if (events.length > 0) {
           sessions.push({
             id: path.basename(file),
             source: source.name,
             file,
             events,
+            malformedLines,
           });
         }
       } catch (error) {
@@ -85,23 +86,23 @@ async function collectFiles(location, warnings) {
 async function readEvents(file) {
   const content = await readFile(file, "utf8");
   if (file.endsWith(".jsonl")) {
-    return content
-      .split(/\r?\n/)
-      .filter(Boolean)
-      .flatMap((line) => {
+    let malformedLines = 0;
+    const events = content.split(/\r?\n/).filter(Boolean).flatMap((line) => {
         try {
           return [JSON.parse(line)];
         } catch {
+          malformedLines += 1;
           return [];
         }
       });
+    return { events, malformedLines };
   }
 
   try {
     const parsed = JSON.parse(content);
-    return Array.isArray(parsed) ? parsed : [parsed];
+    return { events: Array.isArray(parsed) ? parsed : [parsed], malformedLines: 0 };
   } catch {
-    return [];
+    return { events: [], malformedLines: 1 };
   }
 }
 
