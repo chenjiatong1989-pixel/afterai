@@ -55,3 +55,15 @@ test("terminal output exposes the complete receipt without raw logs", () => {
   assert.match(output, /TOKENS/);
   assert.match(output, /VERIFIED/);
 });
+
+test("an empty period reports Unknown instead of estimated zero outcomes", () => {
+  const receipt = createReceipt(recap({
+    counts: { verified: 0, failed: 0, partial: 0, unverified: 0, unknown: 0, retries: 0 },
+    usage: { source: "unknown", totalTokens: 0 },
+    sessions: [],
+  }));
+  assert.equal(receipt.status, "UNKNOWN");
+  assert.deepEqual(receipt.succeeded, { value: "Unknown", evidence: "Unknown", basis: receipt.succeeded.basis });
+  assert.equal(receipt.failed.value, "Unknown");
+  assert.equal(receipt.retries.value, "Unknown");
+});

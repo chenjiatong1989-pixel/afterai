@@ -22,3 +22,19 @@ test("scans JSONL without failing on malformed lines", async () => {
     await rm(directory, { recursive: true, force: true });
   }
 });
+
+test("default Codex scope excludes desktop Work sessions from CLI totals", async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), "afterai-codex-sessions-"));
+  const cliFile = path.join(directory, "cli.jsonl");
+  const workFile = path.join(directory, "work.jsonl");
+  await writeFile(cliFile, JSON.stringify({ type: "session_meta", payload: { source: "cli", cli_version: "0.144.6" } }));
+  await writeFile(workFile, JSON.stringify({ type: "session_meta", payload: { source: "vscode", cli_version: "0.144.6" } }));
+
+  try {
+    const result = await scanSources({ paths: [directory], codexCliOnly: true });
+    assert.equal(result.sessions.length, 1);
+    assert.equal(result.sessions[0].file, cliFile);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
