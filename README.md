@@ -1,96 +1,141 @@
 # AfterAI
 
-> **Know what your AI actually did.**
+> **Your AI said done. AfterAI shows the receipts.**
 
-Your coding agent says it finished. AfterAI checks the evidence, counts the tokens exposed by local logs, estimates their API-equivalent value, and lets you opt into a simple weekly Burn Rank.
+AfterAI turns today's Codex CLI sessions into an evidence-backed work receipt. It shows what Codex claimed, what the local logs actually recorded, and what was genuinely verified.
 
-**Local by default. No account. No API key. No uploaded logs.**
+**Local. Offline. No account. No API key. No telemetry.**
 
-## Try it
+## Run today's receipt
 
 Requires Node.js 20 or newer.
 
 ```bash
-npx github:chenjiatong1989-pixel/afterai week --html
+npx github:chenjiatong1989-pixel/afterai today
 ```
 
-With no path, AfterAI looks for local Codex and Claude Code session directories. Missing or unreadable sources are skipped honestly.
+AfterAI reads the Codex session logs already stored on your machine. You do not need to wrap Codex, configure a proxy, or send your work to another model.
 
-## Commands
+Or install it once and keep the daily command:
 
 ```bash
-afterai                    # today's local recap
-afterai yesterday          # yesterday's recap
-afterai week               # last seven days
-afterai --path ./logs      # custom JSON/JSONL source
-afterai --html             # also save afterai-report.html
-afterai --json             # machine-readable output
-afterai --currency AUD     # override the system-region currency
-afterai --refresh-rates    # explicitly refresh and cache exchange rates
-afterai rank               # refresh the public weekly leaderboard
-afterai rank --sync        # upload your anonymous summary, then refresh rank
-afterai rank --sync --name "Token BBQ"
-afterai rank --leave       # delete this device's leaderboard entry
-afterai --demo             # evidence-backed sample
-afterai privacy            # local AI privacy configuration snapshot
+npm install --global github:chenjiatong1989-pixel/afterai
+afterai today
 ```
 
-## Token value
+Useful output options:
 
-AfterAI uses USD as the common base and converts the result to the currency inferred from the operating-system locale. For example, `en-AU` displays AUD. Use `--currency USD`, `--currency AUD`, or another three-letter ISO code to override it.
+```bash
+afterai today                 # today's evidence receipt in the terminal
+afterai today --json          # the same receipt as machine-readable JSON
+afterai today --path ./logs   # inspect an explicit JSON/JSONL source
+afterai --demo                # run the included deterministic sample
+```
 
-The report labels the result **API equivalent — Estimated**. It is not an account invoice and does not infer ChatGPT Plus, subscription allowances, discounts, taxes, or the amount actually billed.
+Running `afterai` with no period is equivalent to `afterai today`.
 
-- ordinary input, cached input, and output tokens are priced separately
-- cached tokens are removed from ordinary input before calculation
-- a range is shown when the logs do not expose the per-request context tier or model allocation
-- an unknown or unsupported model makes the value `Unknown` rather than silently undercounting it
-- model prices and bundled exchange rates carry snapshot dates
+## One receipt, eight acceptance fields
 
-Normal reports make no network request. `--refresh-rates` is the only exchange-rate network action; it fetches daily central-bank rates from [Frankfurter](https://frankfurter.dev/) and stores them in `~/.afterai/rates.json`.
+Every field is reported even when the honest answer is `Unknown`.
 
-The bundled model-price snapshot is based on [official OpenAI API pricing](https://developers.openai.com/api/docs/pricing). Prices and exchange rates change, so the snapshot date is always displayed.
-
-## Burn Rank
-
-[Burn Rank](https://afterai-burn-rank.chenjiatong1989.chatgpt.site) deliberately has one main weekly leaderboard and one secondary Verified rank. Run `afterai rank` to refresh it. Run `afterai rank --sync` to explicitly upload the current week's summary and receive your rank.
-
-`--sync` uploads only:
-
-- a random anonymous device ID, device proof, and public nickname (the server stores only a one-way hash of the proof)
-- total and Verified token counts
-- the estimated USD range
-- the current week
-
-It does not upload chats, prompts, task titles, files, paths, logs, locations, or personal details. The anonymous identity secret stays in `~/.afterai/rank.json` so only that device can update or delete its entry. Rankings are for fun and are not audited billing records.
-
-## Five honest outcomes
-
-| Outcome | Meaning |
+| Field | Question it answers |
 | --- | --- |
-| `✓ Verified` | Completion has deterministic verification evidence. |
-| `◌ Unverified` | Work changed, but completion was not proven. |
-| `◐ Partial` | Some work exists, but the last verification failed. |
-| `✕ Failed` | The run failed without a completed result. |
-| `? Unknown` | The logs do not contain enough reliable information. |
+| Work | What did Codex work on? |
+| Successes | Which tasks or checks completed successfully? |
+| Failures | What failed, stopped, or still needs review? |
+| Changed files | Which files were recorded as modified? |
+| Tests | Did a test, build, lint, or type-check command actually pass? |
+| Repeated attempts | How many retries or repeated failing commands were observed? |
+| Model | Which model did the session record? |
+| Tokens | How many tokens did Codex expose in its local logs? |
 
-## Privacy
+A receipt is not allowed to turn missing data into a confident answer.
 
-- Logs stay on your computer.
-- No account or API key is required.
-- No network request occurs unless you explicitly run `--refresh-rates`.
-- HTML reports are static local files.
-- Missing values remain `Unknown`.
+## Claim is not evidence
 
-Raw AI logs can contain prompts, source code, paths, and secrets. Treat exported JSON and HTML as private unless you have reviewed them.
+AfterAI keeps three different ideas separate:
 
-## Principles
+| State | Meaning |
+| --- | --- |
+| `Claimed` | Codex said something was done. This is a statement, not proof. |
+| `Observed` | A local event was recorded, such as a file edit, command, exit code, or token counter. |
+| `Verified` | An observed deterministic check supports the completion claim. |
 
-1. Show conclusions before detail.
-2. Separate claims from evidence.
-3. Never disguise estimates as exact values.
-4. Never spend more AI tokens just to count AI tokens.
-5. Surface one next action, not ten weak suggestions.
+For example, “tests passed” in the final assistant message is only `Claimed`. A recorded test command with exit code `0` is `Observed`. It becomes verification evidence only when it supports the work being accepted.
+
+## Evidence confidence
+
+Every value also carries a provenance label:
+
+- **Exact** — read directly from a structured event or deterministic result.
+- **Estimated** — inferred from multiple observations; the method should be visible.
+- **Unknown** — absent, ambiguous, or unsafe to attribute.
+
+`Exact` means the event was captured exactly. It does **not** mean the software is correct. An exact exit code proves that a command returned that code; it does not prove that the test suite covered the right behavior.
+
+## What the receipt should reveal
+
+```text
+AFTERAI WORK RECEIPT · TODAY
+VERDICT  VERIFIED · Estimated
+
+WHAT AI DID          [Estimated]  Work across 2 observed files
+SUCCEEDED            [Estimated]  Work across 2 observed files
+FAILED               [Estimated]  None
+CHANGED FILES        [Exact]      src/login.js, test/login.test.js
+TESTS REALLY PASSED  [Exact]      Passed
+RETRIES              [Estimated]  0
+MODELS                [Exact]      gpt-5.6-sol
+TOKENS                [Exact]      126842
+```
+
+The useful result is not a wall of logs. It is the shortest honest answer to: **Can I accept this work?**
+
+## Privacy contract
+
+The core `today` workflow is local and read-only with respect to Codex sessions:
+
+- no log, prompt, source file, or path is uploaded;
+- no analytics or background telemetry is sent;
+- no network request is needed;
+- no second AI call is made to summarize the first AI;
+- JSON and HTML outputs stay on your machine unless you move them.
+
+Receipts omit raw prompts, replies, code, command output, and absolute source paths. Repository-relative filenames, model IDs, and activity metadata can still be sensitive, so review a receipt before sharing it.
+
+Some legacy experimental commands may still exist in the repository. They are outside the v0.1 product contract; the `afterai today` acceptance receipt never opts into them or sends data on their behalf.
+
+## v0.1 scope
+
+v0.1 deliberately supports one workflow:
+
+1. Read today's local Codex CLI sessions.
+2. Produce the eight-field work receipt.
+3. Separate claims, observations, and verification.
+4. label every conclusion `Exact`, `Estimated`, or `Unknown`.
+5. Point to the work that needs human review.
+
+### Non-goals
+
+- real-time monitoring, tracing, or session replay;
+- a hosted dashboard or team analytics service;
+- token pricing, billing estimates, or leaderboards;
+- Claude, Cursor, or broad multi-agent coverage as a release requirement;
+- another LLM-generated daily summary;
+- replacing Git, CI, code review, or human acceptance;
+- claiming that a passing command proves the whole feature is correct.
+
+Ship the receipt first. Expand only after this loop is trustworthy.
+
+## Product principles
+
+1. Evidence before narrative.
+2. Unknown before invented certainty.
+3. Conclusions before raw detail.
+4. Local evidence stays local.
+5. One clear next action beats ten weak suggestions.
+
+See [docs/PRODUCT.md](docs/PRODUCT.md) for the v0.1 evidence contract and release boundary.
 
 ## License
 

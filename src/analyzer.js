@@ -62,7 +62,7 @@ export function analyzeSession(session) {
   const failure = hasFailure(exitCodes, text);
   const status = determineStatus({ claim, failure, verification, changedFiles });
 
-  return {
+  return applyIntegrity({
     id: session.id,
     source: session.source,
     timestamp,
@@ -74,8 +74,19 @@ export function analyzeSession(session) {
     usage,
     retryCount: retryInfo.count,
     repeatedFailure: retryInfo.repeatedFailure,
-    file: session.file,
-  };
+    file: safeSourceFile(session.file),
+  }, session);
+}
+
+function applyIntegrity(result, session) {
+  if (!(session.malformedLines > 0)) return result;
+  if (result.status === "verified") result.status = "unverified";
+  result.evidence.push({
+    type: "source-integrity",
+    exact: true,
+    text: `${session.malformedLines} malformed or truncated log line${session.malformedLines === 1 ? "" : "s"}; conclusions downgraded`,
+  });
+  return result;
 }
 
 function isCodexEventStream(events) {
@@ -101,6 +112,11 @@ function analyzeCodexSession(session) {
   const claimText = finalMessages.at(-1) ?? "";
   const changedFiles = findCodexChangedFiles(calls);
   const verification = findCodexVerification(commandRuns);
+  const lastWriteIndex = findLastWriteIndex(calls);
+  if (verification.passed && lastWriteIndex > verification.eventIndex) {
+    verification.passed = false;
+    verification.stale = true;
+  }
   const claim = hasCompletionClaim(claimText);
   const incomplete = hasIncompleteClaim(claimText);
   const explicitAbort = session.events.some((event) =>
@@ -116,11 +132,11 @@ function analyzeCodexSession(session) {
   const progress = changedFiles.length > 0 || successfulRuns.length > 0 || calls.length > 0;
   const status = determineStatus({ claim, incomplete, progress, failure, verification, changedFiles });
 
-  return {
+  return applyIntegrity({
     id: session.id,
     source: session.source,
     timestamp: findCodexTimestamp(session.events, session.file),
-    title: findCodexTitle(session.events),
+    title: findCodexTitle(changedFiles),
     status,
     claim: claim ? "Agent reported completion" : "No clear completion claim",
     evidence: buildEvidence({ verification, changedFiles, exitCodes, incomplete }),
@@ -128,30 +144,33 @@ function analyzeCodexSession(session) {
     usage: extractCodexUsage(session.events),
     retryCount: retryInfo.count,
     repeatedFailure: retryInfo.repeatedFailure,
-    file: session.file,
-  };
+    file: safeSourceFile(session.file),
+  }, session);
 }
 
 function collectCodexCalls(events) {
   const outputs = new Map();
-  for (const event of events) {
+  for (const [eventIndex, event] of events.entries()) {
     const payload = event?.payload;
     if (event?.type === "response_item" && payload?.type === "function_call_output") {
-      outputs.set(payload.call_id, payload.output);
+      outputs.set(payload.call_id, { value: payload.output, eventIndex });
     } else if (event?.type === "event_msg" && payload?.type === "mcp_tool_call_end") {
-      outputs.set(payload.call_id, payload.result);
+      outputs.set(payload.call_id, { value: payload.result, eventIndex });
     }
   }
 
-  return events.flatMap((event) => {
+  return events.flatMap((event, eventIndex) => {
     const payload = event?.payload;
     if (event?.type !== "response_item" || !["function_call", "tool_search_call", "web_search_call"].includes(payload?.type)) return [];
+    const output = outputs.get(payload.call_id ?? payload.id);
     return [{
       id: payload.call_id ?? payload.id,
       name: payload.name ?? payload.type,
       arguments: parseArguments(payload.arguments),
       rawArguments: typeof payload.arguments === "string" ? payload.arguments : JSON.stringify(payload.arguments ?? {}),
-      output: outputs.get(payload.call_id ?? payload.id),
+      output: output?.value,
+      eventIndex,
+      outputIndex: output?.eventIndex ?? eventIndex,
     }];
   });
 }
@@ -206,12 +225,23 @@ function exitCodeFromValue(value) {
 function findCodexVerification(runs) {
   const verificationRuns = runs.filter((run) => isVerificationCommand(run.command));
   const last = verificationRuns.at(-1);
-  if (!last) return { passed: false, failed: false, command: null };
-  if (last.exitCode === 0) return { passed: true, failed: false, command: shorten(last.command, 72) };
+  if (!last) return { passed: false, failed: false, stale: false, command: null, eventIndex: -1 };
+  if (last.exitCode === 0) return { passed: true, failed: false, stale: false, command: shorten(last.command, 72), eventIndex: last.outputIndex };
   if (Number.isInteger(last.exitCode) && last.exitCode !== 0) {
-    return { passed: false, failed: true, command: shorten(last.command, 72) };
+    return { passed: false, failed: true, stale: false, command: shorten(last.command, 72), eventIndex: last.outputIndex };
   }
-  return { passed: false, failed: false, command: shorten(last.command, 72) };
+  return { passed: false, failed: false, stale: false, command: shorten(last.command, 72), eventIndex: last.outputIndex };
+}
+
+function findLastWriteIndex(calls) {
+  let last = -1;
+  for (const call of calls) {
+    const raw = `${call.rawArguments ?? ""}\n${stringValue(call.arguments)}`;
+    const patchWrite = /\*\*\* (?:Add|Update|Delete) File:/i.test(raw);
+    const namedWrite = /(?:apply_patch|create_file|update_file|delete_file|write_file)/i.test(call.name);
+    if (patchWrite || namedWrite) last = Math.max(last, call.outputIndex ?? call.eventIndex ?? -1);
+  }
+  return last;
 }
 
 function findCodexChangedFiles(calls) {
@@ -220,11 +250,11 @@ function findCodexChangedFiles(calls) {
     const raw = `${call.rawArguments ?? ""}\n${stringValue(call.arguments)}`;
     for (const match of raw.matchAll(/\*\*\* (?:Add|Update|Delete) File:\s*([^\r\n*]+)/g)) {
       const file = match[1].replace(/\\[nr].*$/, "").trim();
-      if (file) files.add(file);
+      if (file) files.add(sanitizeFilePath(file));
     }
     if (/create_file|update_file|delete_file/i.test(call.name)) {
       const file = call.arguments?.path;
-      if (typeof file === "string" && file.trim()) files.add(file.trim());
+      if (typeof file === "string" && file.trim()) files.add(sanitizeFilePath(file));
     }
   }
   return [...files].slice(0, 50);
@@ -241,14 +271,10 @@ function findCodexRetries(runs) {
   };
 }
 
-function findCodexTitle(events) {
-  const messages = events
-    .filter((event) => event?.type === "event_msg" && event.payload?.type === "user_message")
-    .map((event) => event.payload?.message)
-    .filter((value) => typeof value === "string")
-    .map((value) => value.trim())
-    .filter((value) => value.length >= 2 && !/^(?:<environment_context>|===== BEGIN ADDITIONAL MESSAGE)/i.test(value));
-  return shorten(messages[0] ?? "Untitled Codex session", 78);
+function findCodexTitle(changedFiles) {
+  if (changedFiles.length === 1) return `Work on ${changedFiles[0]}`;
+  if (changedFiles.length > 1) return `Work across ${changedFiles.length} observed files`;
+  return "Codex work session";
 }
 
 function findCodexTimestamp(events, file) {
@@ -315,6 +341,7 @@ function stringValue(value) {
 
 function determineStatus({ claim, incomplete = false, progress = false, failure, verification, changedFiles }) {
   if (incomplete && progress) return "partial";
+  if (verification.stale) return claim || changedFiles.length > 0 ? "unverified" : "unknown";
   if (verification.passed) return "verified";
   if (verification.failed && (changedFiles.length > 0 || claim)) return "partial";
   if (failure && !claim) return "failed";
@@ -326,7 +353,14 @@ function buildEvidence({ verification, changedFiles, exitCodes, incomplete = fal
   const evidence = [];
   if (verification.passed) evidence.push({ type: "verification", exact: true, text: `${verification.command} passed` });
   if (verification.failed) evidence.push({ type: "verification", exact: true, text: `${verification.command} failed` });
-  if (changedFiles.length > 0) evidence.push({ type: "files", exact: true, text: `${changedFiles.length} changed file${changedFiles.length === 1 ? "" : "s"}`, files: changedFiles });
+  if (verification.stale) evidence.push({ type: "verification", exact: true, stale: true, text: `${verification.command} passed, but files changed afterward` });
+  if (changedFiles.length > 0) evidence.push({
+    type: "files",
+    exact: true,
+    attribution: "unknown",
+    text: `${changedFiles.length} observed file operation${changedFiles.length === 1 ? "" : "s"}`,
+    files: changedFiles,
+  });
   const nonZero = exitCodes.filter((code) => code !== 0);
   if (nonZero.length > 0) {
     const prefix = verification.passed ? "earlier " : "";
@@ -446,7 +480,7 @@ function findModels(flattened) {
 function findChangedFiles(flattened) {
   const files = flattened
     .filter((item) => typeof item.value === "string" && /(^|\.)(file|file_path|path|changed_files\.\d+)$/i.test(item.path))
-    .map((item) => item.value)
+    .map((item) => sanitizeFilePath(item.value))
     .filter((value) => /[\\/]|\.[a-z0-9]{1,8}$/i.test(value) && !value.includes("sessions/"));
   return [...new Set(files)].slice(0, 50);
 }
@@ -463,14 +497,20 @@ function findTimestamp(events, file) {
 }
 
 function findTitle(events, text) {
-  const flattened = events.flatMap((event) => flatten(event));
-  const candidate = flattened.find((item) =>
-    typeof item.value === "string" &&
-    /(^|\.)(task|title|prompt|user_message|message\.content)$/i.test(item.path) &&
-    item.value.trim().length >= 4
-  );
-  return shorten(candidate?.value ?? text.split("\n").find(Boolean) ?? "Untitled AI session", 78);
+  return events.length > 0 || text ? "Recorded AI work" : "Untitled AI session";
 }
+
+function safeSourceFile(file) {
+  return String(file ?? "unknown").replace(/\\/g, "/").split("/").filter(Boolean).at(-1) ?? "unknown";
+}
+
+function sanitizeFilePath(value) {
+  const normalized = String(value ?? "").replace(/\\/g, "/").trim();
+  const anchor = normalized.match(/(?:^|\/)((?:src|test|tests|docs|lib|app|bin|assets)\/.*)$/i);
+  if (anchor) return anchor[1];
+  return normalized.split("/").filter(Boolean).at(-1) ?? "unknown";
+}
+
 
 function sumUsage(sessions) {
   const usage = sessions.reduce((total, session) => ({
