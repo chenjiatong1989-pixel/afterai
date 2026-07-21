@@ -229,3 +229,29 @@ test("detects repeated failed generic work", () => {
   assert.equal(session.retryCount, 2);
   assert.match(session.repeatedFailure, /error connection refused/);
 });
+
+test("parses Codex CLI 0.144 custom tools, turn model, and shell verification", () => {
+  const session = analyzeSession({
+    id: "codex-0144",
+    source: "codex",
+    file: "/tmp/2026-07-21/rollout.jsonl",
+    events: [
+      { timestamp: "2026-07-21T09:00:00Z", type: "session_meta", payload: { source: "cli", originator: "codex", cli_version: "0.144.6" } },
+      { timestamp: "2026-07-21T09:00:01Z", type: "turn_context", payload: { model: "gpt-5.6-sol", cwd: "C:/Users/test/afterai-test" } },
+      { timestamp: "2026-07-21T09:01:00Z", type: "response_item", payload: { type: "custom_tool_call", name: "apply_patch", call_id: "patch", input: "*** Begin Patch\n*** Add File: hello.js\n+module.exports = {};\n*** Add File: hello.test.js\n+// test\n*** End Patch" } },
+      { timestamp: "2026-07-21T09:01:01Z", type: "response_item", payload: { type: "custom_tool_call_output", call_id: "patch", name: "apply_patch", output: "Success" } },
+      { timestamp: "2026-07-21T09:02:00Z", type: "response_item", payload: { type: "function_call", name: "shell_command", call_id: "test", arguments: JSON.stringify({ command: "node --test hello.test.js" }) } },
+      { timestamp: "2026-07-21T09:02:01Z", type: "response_item", payload: { type: "function_call_output", call_id: "test", output: "Process exited with code 0\nFinal output:\ntests 1\npass 1\nfail 0" } },
+      { timestamp: "2026-07-21T09:03:00Z", type: "event_msg", payload: { type: "token_count", info: { total_token_usage: { input_tokens: 14789, cached_input_tokens: 74752, output_tokens: 393, total_tokens: 15182 } } } },
+      { timestamp: "2026-07-21T09:04:00Z", type: "response_item", payload: { type: "message", role: "assistant", phase: "final_answer", content: [{ type: "output_text", text: "Created both files and the test passed." }] } },
+    ],
+  });
+
+  assert.equal(session.status, "verified");
+  assert.equal(session.title, "Work across 2 observed files");
+  assert.deepEqual(session.models, ["gpt-5.6-sol"]);
+  assert.equal(session.usage.totalTokens, 15182);
+  assert.equal(session.usage.cacheTokens, 74752);
+  assert.deepEqual(session.evidence.find((item) => item.type === "files")?.files, ["hello.js", "hello.test.js"]);
+  assert.match(session.evidence.find((item) => item.type === "verification")?.text, /node --test hello\.test\.js passed/);
+});

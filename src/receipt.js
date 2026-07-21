@@ -37,13 +37,13 @@ export function createReceipt(recap) {
       "Deterministic activity summary; raw prompts are not exported.",
     ),
     succeeded: field(
-      verified.length ? verified.map((session) => session.title) : [],
-      EVIDENCE.ESTIMATED,
+      sessions.length ? verified.map((session) => session.title) : "Unknown",
+      sessions.length ? EVIDENCE.ESTIMATED : EVIDENCE.UNKNOWN,
       "Tasks with a fresh, recorded verifier exit of zero.",
     ),
     failed: field(
-      failed.length ? failed.map((session) => session.title) : [],
-      EVIDENCE.ESTIMATED,
+      sessions.length ? failed.map((session) => session.title) : "Unknown",
+      sessions.length ? EVIDENCE.ESTIMATED : EVIDENCE.UNKNOWN,
       "Tasks with recorded failure or failed final verification.",
     ),
     changedFiles: {
@@ -54,7 +54,7 @@ export function createReceipt(recap) {
       ...field(verifications.length ? verifications : "Unknown", verifications.length ? EVIDENCE.EXACT : EVIDENCE.UNKNOWN, "Recorded verifier results; AfterAI does not run discovered commands."),
       stale,
     },
-    retries: field(recap?.counts?.retries ?? 0, EVIDENCE.ESTIMATED, "Repeated failed commands grouped deterministically."),
+    retries: field(sessions.length ? (recap?.counts?.retries ?? 0) : "Unknown", sessions.length ? EVIDENCE.ESTIMATED : EVIDENCE.UNKNOWN, "Repeated failed commands grouped deterministically."),
     models: field(models.length ? models : "Unknown", models.length ? EVIDENCE.EXACT : EVIDENCE.UNKNOWN, "All recorded model identifiers, in first-seen order."),
     tokens: field(tokenKnown ? recap.usage.totalTokens : "Unknown", tokenKnown ? EVIDENCE.EXACT : EVIDENCE.UNKNOWN, "Latest complete cumulative token snapshot per session."),
   };

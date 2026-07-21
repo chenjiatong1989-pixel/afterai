@@ -108,7 +108,8 @@ function analyzeCodexSession(session) {
   const finalMessages = session.events
     .filter((event) => event?.type === "event_msg" && event.payload?.type === "task_complete")
     .map((event) => event.payload?.last_agent_message)
-    .filter((value) => typeof value === "string");
+    .filter((value) => typeof value === "string")
+    .concat(findCodexFinalMessages(session.events));
   const claimText = finalMessages.at(-1) ?? "";
   const changedFiles = findCodexChangedFiles(calls);
   const verification = findCodexVerification(commandRuns);
@@ -152,7 +153,7 @@ function collectCodexCalls(events) {
   const outputs = new Map();
   for (const [eventIndex, event] of events.entries()) {
     const payload = event?.payload;
-    if (event?.type === "response_item" && payload?.type === "function_call_output") {
+    if (event?.type === "response_item" && ["function_call_output", "custom_tool_call_output", "tool_search_output"].includes(payload?.type)) {
       outputs.set(payload.call_id, { value: payload.output, eventIndex });
     } else if (event?.type === "event_msg" && payload?.type === "mcp_tool_call_end") {
       outputs.set(payload.call_id, { value: payload.result, eventIndex });
@@ -161,13 +162,14 @@ function collectCodexCalls(events) {
 
   return events.flatMap((event, eventIndex) => {
     const payload = event?.payload;
-    if (event?.type !== "response_item" || !["function_call", "tool_search_call", "web_search_call"].includes(payload?.type)) return [];
+    if (event?.type !== "response_item" || !["function_call", "custom_tool_call", "local_shell_call", "tool_search_call", "web_search_call"].includes(payload?.type)) return [];
     const output = outputs.get(payload.call_id ?? payload.id);
+    const rawInput = payload.arguments ?? payload.input ?? payload.action ?? {};
     return [{
       id: payload.call_id ?? payload.id,
       name: payload.name ?? payload.type,
-      arguments: parseArguments(payload.arguments),
-      rawArguments: typeof payload.arguments === "string" ? payload.arguments : JSON.stringify(payload.arguments ?? {}),
+      arguments: parseArguments(rawInput),
+      rawArguments: typeof rawInput === "string" ? rawInput : JSON.stringify(rawInput),
       output: output?.value,
       eventIndex,
       outputIndex: output?.eventIndex ?? eventIndex,
@@ -194,6 +196,8 @@ function commandFromCall(call) {
   ];
   const direct = candidates.find((value) => typeof value === "string" && value.trim());
   if (direct) return direct;
+  const arrayCommand = candidates.find(Array.isArray);
+  if (arrayCommand) return arrayCommand.map(String).join(" ");
   if (/exec|command|shell/i.test(call.name) && typeof call.arguments?.value === "string") return call.arguments.value;
   return null;
 }
@@ -290,10 +294,21 @@ function findCodexTimestamp(events, file) {
 function findCodexModels(events) {
   const models = [];
   for (const event of events) {
-    if (!["session_meta", "event_msg"].includes(event?.type)) continue;
+    if (!["session_meta", "turn_context", "event_msg"].includes(event?.type)) continue;
     collectNamedStrings(event.payload, "model", models);
   }
   return [...new Set(models)];
+}
+
+function findCodexFinalMessages(events) {
+  return events.flatMap((event) => {
+    const payload = event?.payload;
+    if (event?.type !== "response_item" || payload?.type !== "message" || payload?.role !== "assistant") return [];
+    if (payload.phase && payload.phase !== "final_answer") return [];
+    return (payload.content ?? [])
+      .map((item) => item?.text)
+      .filter((value) => typeof value === "string");
+  });
 }
 
 function extractCodexUsage(events) {

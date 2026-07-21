@@ -10,6 +10,7 @@ const MAX_FILES = 5_000;
 const MAX_FILE_BYTES = 25 * 1024 * 1024;
 
 export async function scanSources(options = {}) {
+  const codexCliOnly = options.codexCliOnly ?? !options.paths?.length;
   const candidates = options.paths?.length
     ? options.paths.map((location) => ({ name: detectSource(location), location }))
     : DEFAULT_SOURCES.map((source) => ({
@@ -31,7 +32,7 @@ export async function scanSources(options = {}) {
         }
         const { events, malformedLines } = await readEvents(file);
         if (malformedLines > 0) warnings.push(`Ignored ${malformedLines} malformed or truncated line${malformedLines === 1 ? "" : "s"} in ${file}`);
-        if (events.length > 0) {
+        if (events.length > 0 && (!codexCliOnly || source.name !== "codex" || isCodexCliRollout(events))) {
           sessions.push({
             id: path.basename(file),
             source: source.name,
@@ -47,6 +48,13 @@ export async function scanSources(options = {}) {
   }
 
   return { sessions, warnings };
+}
+
+function isCodexCliRollout(events) {
+  const meta = events.find((event) => event?.type === "session_meta")?.payload;
+  const sessionSource = typeof meta?.source === "string" ? meta.source.toLowerCase() : "";
+  if (!sessionSource) return true;
+  return sessionSource === "cli" || sessionSource === "exec";
 }
 
 async function collectFiles(location, warnings) {
