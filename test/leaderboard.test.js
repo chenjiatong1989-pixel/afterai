@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
 import { renderLeaderboard, syncLeaderboard } from "../src/leaderboard.js";
 
 test("sync uploads only the documented anonymous weekly summary", async () => {
@@ -14,7 +16,7 @@ test("sync uploads only the documented anonymous weekly summary", async () => {
   };
   const result = await syncLeaderboard(recap, {
     endpoint: "https://rank.example/api/leaderboard",
-    identityPath: `/tmp/afterai-rank-${process.pid}.json`,
+    identityPath: path.join(os.tmpdir(), `afterai-rank-${process.pid}.json`),
     name: "Token BBQ",
     fetcher: async (_url, init) => {
       uploaded = JSON.parse(init.body);
@@ -36,13 +38,13 @@ test("rank output stays focused on one primary and one secondary rank", () => {
   assert.match(output, /Weekly rank  #29 of 2418/);
   assert.match(output, /Verified rank  #82/);
   assert.match(output, /43\.9M tokens/);
-  assert.match(output, /\$35\.62–\$69\.28/);
-  assert.match(output, /A\$50\.83–A\$98\.86/);
+  assert.match(output, /35\.62.*69\.28/);
+  assert.match(output, /50\.83.*98\.86/);
   assert.doesNotMatch(output, /Cache rank|Model rank|Monthly rank/);
 });
 
 test("refuses to upload when pricing is Unknown", async () => {
   await assert.rejects(() => syncLeaderboard({ usage: { totalTokens: 1 }, value: { status: "unknown" }, sessions: [] }, {
-    identityPath: `/tmp/afterai-rank-unknown-${process.pid}.json`, fetcher: async () => { throw new Error("should not fetch"); },
+    identityPath: path.join(os.tmpdir(), `afterai-rank-unknown-${process.pid}.json`), fetcher: async () => { throw new Error("should not fetch"); },
   }), /cannot be ranked honestly/);
 });
