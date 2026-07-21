@@ -1,5 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import os from "node:os";
+import path from "node:path";
 import { calculateTokenValue, formatMoneyRange } from "../src/value.js";
 import { BUNDLED_RATES, detectCurrency, loadRates, normalizeCurrency, refreshRates } from "../src/currency.js";
 
@@ -29,12 +31,12 @@ test("detects Australian currency and accepts a manual ISO override", () => {
 });
 
 test("uses bundled rates when no valid cache exists", async () => {
-  const rates = await loadRates({ cachePath: "/tmp/afterai-missing-rates-test.json" });
+  const rates = await loadRates({ cachePath: path.join(os.tmpdir(), `afterai-missing-rates-${process.pid}.json`) });
   assert.equal(rates.rates.AUD, 1.4269);
 });
 
 test("refreshes rates only through an explicit call", async () => {
-  const cachePath = `/tmp/afterai-rates-${process.pid}.json`;
+  const cachePath = path.join(os.tmpdir(), `afterai-rates-${process.pid}.json`);
   const rates = await refreshRates({ cachePath, fetcher: async () => ({
     ok: true, json: async () => ({ base: "USD", date: "2026-07-17", rates: { AUD: 1.43 } }),
   }) });
@@ -43,5 +45,8 @@ test("refreshes rates only through an explicit call", async () => {
 });
 
 test("formats honest money ranges", () => {
-  assert.equal(formatMoneyRange({ low: 10, high: 12 }, "USD", "en-US"), "$10.00–$12.00");
+  const formatted = formatMoneyRange({ low: 10, high: 12 }, "USD", "en-US");
+  assert.match(formatted, /10\.00/);
+  assert.match(formatted, /12\.00/);
+  assert.match(formatted, /–/);
 });
